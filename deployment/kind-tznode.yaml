@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: "tqtezos"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tezos-pv-claim
+  namespace: "tqtezos"
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  selector:
+    matchLabels:
+      storage-type: var-files
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tezos-config
+  namespace: "tqtezos"
+data:
+  parameters.json: |
+    {parameters_json}
+  config.json: |
+    {config_json}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tezos-rpc
+  namespace: "tqtezos"
+spec:
+  ports:
+  - port: 8732
+  selector:
+    app: tezos-rpc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tezos-node
+  namespace: "tqtezos"
+spec:
+  selector:
+    matchLabels:
+      app: tezos-node
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: tezos-node
+    spec:
+      containers:
+      - image: tezos/tezos:v7.0-rc1_cde7fbbb_20200416150132
+        imagePullPolicy: Always
+        name: tezos-node
+        command: ["/usr/local/bin/tezos-node"]
+        args: ["run", "--config-file",  "/etc/tezos/config.json"]
+        ports:
+        - containerPort: 8732
+          name: tezos-rpc
+        - containerPort: 8733
+          name: tezos-net
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/tezos
+        - name: var-volume
+          mountPath: /var/tezos
+      volumes:
+      - name: config-volume
+        configMap:
+          name: tezos-config
+      - name: var-volume
+        persistentVolumeClaim:
+          claimName: tezos-pv-claim
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: activate-job
+spec:
+  template:
+    metadata:
+      name: activate-job
+    spec:
+      initContainers:
+      - name: activate
+        image: tezos/tezos:v7.0-rc1_cde7fbbb_20200416150132
+        command: ["/usr/local/bin/tezos-client"]
+        args: ["-A", "tezos-rpc", "-P", "8732", "-d", "/var/tezos/client", "-l", "--block", "genesis", "activate", "protocol", "{protocol_hash}", "with", "fitness", "25", "and", "key", "genesis", "and", "parameters", "/etc/tezos/parameters.json"]
+      - name: bake
+        image: tezos/tezos:v7.0-rc1_cde7fbbb_20200416150132
+        command: ["/usr/local/bin/tezos-client"]
+        args: ["-A", "tezos-rpc", "-P", "8732", "-d", "/var/tezos/client", "-l", "bake", "for", "baker", "--minimal-timestamp"]
+      containers:
+      - name: job-done
+        image: busybox
+        command: ['sh', '-c', 'echo "private chain activated']
+      restartPolicy: Never
+      volumes:
+      - name: var-volume
+        persistentVolumeClaim:
+          claimName: tezos-pv-claim
