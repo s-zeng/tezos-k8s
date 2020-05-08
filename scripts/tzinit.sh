@@ -118,6 +118,8 @@ gen_id() {
     docker run -u $UID --rm --entrypoint "/usr/local/bin/tezos-node" -v $WORK_DIR/node:/data $DOCKER_IMAGE identity generate 0 --data-dir /data --config-file /data/config.json
 }
 
+WORK_DIR=${PROJECT_ROOT_DIR}/work
+
 while true; do
     if [[ $# -eq 0 ]]; then
         break

@@ -8,12 +8,11 @@ common_templates = ["deployment/tznode.yaml"]
 local_templates = []
 eks_templates = []
 
+tezos_dir = os.path.expanduser("~/.tq/")
 my_path = os.path.abspath(os.path.dirname(__file__))
 init_path = os.path.join(my_path, "scripts", "tzinit.sh")
-config_path = os.path.join(my_path, "work", "node", "config.json")
-parameters_path = os.path.join(my_path, "work", "client", "parameters.json")
-tezos_dir = os.path.expanduser("~/.tq/")
-
+config_path = os.path.join(tezos_dir, "work", "node", "config.json")
+parameters_path = os.path.join(tezos_dir, "work", "client", "parameters.json")
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -55,15 +54,15 @@ def get_args():
     parser_eks.add_argument("gdb_volume_id")
     parser_eks.add_argument("gdb_aws_region")
 
+    parser_kind = subparsers.add_parser("kind", help="generate config for Kind")
+    parser_kind.add_argument(
+        "-t", "--template", action="append", default=common_templates + local_templates
+    )
     return parser.parse_args()
-
 
 def main():
 
     args = vars(get_args())
-    # assign the contents of config.json to a template variable for the ConfigMap
-    args["config_json"] = json.dumps(json.load(open(args["config_file"], "r")))
-    args["parameters_json"] = json.dumps(json.load(open(args["parameters_file"], "r")))
     if args["extra"]:
         for extra in args["extra"]:
             arg, val = extra.split("=", 1)
@@ -81,7 +80,8 @@ def main():
             ).split("/")[0]
         except subprocess.CalledProcessError as e:
             print("failed to get minikube route %r" % e)
-
+    if args.get("kind"):
+        print ("Config generation for Kind TBD...")
     if args["create"]:
         subprocess.check_output(
             "%s --chain-name %s --work-dir %s"
@@ -90,10 +90,14 @@ def main():
         )
         args["template"].append("deployment/activate.yaml")
 
+    # assign the contents of config.json to a template variable for the ConfigMap
+    args["config_json"] = json.dumps(json.load(open(args["config_file"], "r")))
+    args["parameters_json"] = json.dumps(json.load(open(args["parameters_file"], "r")))
+
     if args["stdout"]:
         out = sys.stdout
     else:
-        out = open("tq-{}.yaml".format(args["chain-name"]), "wb")
+        out = open("tq-{}.yaml".format(args["chain_name"]), "wb")
 
     with out as yaml_file:
         for template in args["template"]:
