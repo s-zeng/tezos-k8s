@@ -11,8 +11,9 @@ eks_templates = []
 tezos_dir = os.path.expanduser("~/.tq/")
 my_path = os.path.abspath(os.path.dirname(__file__))
 init_path = os.path.join(my_path, "scripts", "tzinit.sh")
-config_path = os.path.join(tezos_dir, "work", "node", "config.json")
-parameters_path = os.path.join(tezos_dir, "work", "client", "parameters.json")
+tezos_dir = os.path.expanduser("~/.tq/")
+config_path = os.path.join(tezos_dir, "node", "config.json")
+parameters_path = os.path.join(tezos_dir, "client", "parameters.json")
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -77,7 +78,7 @@ def main():
             minikube_ip = subprocess.check_output(
                 '''minikube ssh "ip addr show eth0|awk /^[[:space:]]+inet/'{print \$2}'"''',
                 shell=True,
-            ).split("/")[0]
+            ).split(b"/")[0]
         except subprocess.CalledProcessError as e:
             print("failed to get minikube route %r" % e)
     if args.get("kind"):
