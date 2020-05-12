@@ -313,6 +313,12 @@ def main():
         except subprocess.CalledProcessError as e:
             print("failed to get minikube route %r" % e)
 
+    if "kind" in args:
+        try:
+            k8s_templates.insert(0, "deployment/pv-kind.yaml")
+        except subprocess.CalledProcessError as e:
+            print("failed to insert kind yaml file" % e)
+
     if "docker_desktop" in args:
         k8s_templates.insert(0, "deployment/pv-hostpath.yaml")
 
