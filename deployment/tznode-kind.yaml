@@ -89,7 +89,7 @@ spec:
         imagePullPolicy: Always
         name: tezos-node
         command: ["/usr/local/bin/tezos-node"]
-        args: ["run", "-vv", "--config-file",  "/etc/tezos/config.json"]
+        args: ["run", "--config-file",  "/etc/tezos/config.json"]
         ports:
         - containerPort: 8732
           name: tezos-rpc

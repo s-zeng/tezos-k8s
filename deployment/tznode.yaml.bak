@@ -4,22 +4,6 @@ metadata:
   name: "tqtezos"
 ---
 apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: tezos-var-volume
-  labels:
-    storage-type: var-files
-spec:
-  capacity:
-    storage: 15Gi
-  accessModes:
-  - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: "/var/tezos"
----
-apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: tezos-pv-claim
@@ -89,7 +73,7 @@ spec:
         imagePullPolicy: Always
         name: tezos-node
         command: ["/usr/local/bin/tezos-node"]
-        args: ["run", "-vv", "--config-file",  "/etc/tezos/config.json"]
+        args: ["run", "--config-file",  "/etc/tezos/config.json"]
         ports:
         - containerPort: 8732
           name: tezos-rpc
