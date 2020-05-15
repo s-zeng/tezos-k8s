@@ -1,0 +1,29 @@
+{
+    "data-dir": "/var/tezos/node",
+    "rpc": {
+      "listen-addrs": [
+        ":8733"
+      ]
+    },
+    "p2p": {
+      "bootstrap-peers": [
+      ],
+      "listen-addr": "[::]:8732",
+      "expected-proof-of-work": 0
+    },
+    "network": {
+        "genesis": {
+            "timestamp": "2020-05-15T15:50:07Z",
+            "block": "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7",
+            "protocol": "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex"
+        },
+        "genesis_parameters": {
+            "values": {
+            "genesis_pubkey": " edpktntayTcE489PrbWzG5NCrLe3RHRsgL5FJZGyCJdapRKvR94rcJ"
+            }
+        },
+        "chain_name": "private-friday",
+        "sandboxed_chain_name": "SANDBOXED_TEZOS",
+        "default_bootstrap_peers": []
+    }
+}
