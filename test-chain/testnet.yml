@@ -1,0 +1,449 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tqtezos1
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tezos-pv-claim
+  namespace: tqtezos1
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 15Gi
+  selector:
+    matchLabels:
+      storage-type: var-files
+  # storageClassName: manual
+---
+apiVersion: v1
+data:
+  config.json:
+    '{"p2p": {"bootstrap-peers": ["tezos-p2p:9732"], "listen-addr": "[::]:9732", "expected-proof-of-work":
+    0}, "data-dir": "/var/tezos/node", "rpc": {"listen-addrs": [":8732"]}, "network":
+    {"chain_name": "my_chain", "sandboxed_chain_name": "SANDBOXED_TEZOS", "default_bootstrap_peers":
+    [], "genesis": {"timestamp": "2020-08-24T14:42:21.495599+00:00", "block": "BLtRfss9sZWvznNyzcPHzHq77S2G34u1zSomeqcu113szx44msS",
+    "protocol": "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex"}, "genesis_parameters":
+    {"values": {"genesis_pubkey": ""}}}}'
+  parameters.json:
+    '{"bootstrap_accounts": [], "preserved_cycles": 2, "blocks_per_cycle": 8, "blocks_per_commitment":
+    4, "blocks_per_roll_snapshot": 4, "blocks_per_voting_period": 64, "time_between_blocks":
+    ["10", "20"], "endorsers_per_block": 32, "hard_gas_limit_per_operation": "800000",
+    "hard_gas_limit_per_block": "8000000", "proof_of_work_threshold": "-1", "tokens_per_roll":
+    "8000000000", "michelson_maximum_type_size": 1000, "seed_nonce_revelation_tip":
+    "125000", "origination_size": 257, "block_security_deposit": "512000000", "endorsement_security_deposit":
+    "64000000", "endorsement_reward": ["2000000"], "cost_per_byte": "1000", "hard_storage_limit_per_operation":
+    "60000", "test_chain_duration": "1966080", "quorum_min": 2000, "quorum_max": 7000,
+    "min_proposal_quorum": 500, "initial_endorsers": 1, "delay_per_missing_endorsement":
+    "1", "baking_reward_per_endorsement": ["200000"]}'
+kind: ConfigMap
+metadata:
+  name: tezos-config
+  namespace: tqtezos1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tezos-rpc
+  namespace: tqtezos1
+spec:
+  ports:
+    - port: 8732
+  selector:
+    app: tezos-node
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tezos-p2p
+  namespace: tqtezos1
+spec:
+  ports:
+    - port: 9732
+  # clusterIP: None
+  selector:
+    app: tezos-node
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: tqtezos1
+  name: update-tezos-config-role
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "events", "pods"]
+    verbs: ["*"]
+    # resources: ["configmaps"]
+    # resourceNames: ["tezos-config"]
+    # verbs: ["patch"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: update-tezos-config-role-binding
+  namespace: tqtezos1
+subjects:
+  - kind: ServiceAccount
+    namespace: tqtezos1
+    name: default
+roleRef:
+  kind: Role
+  name: update-tezos-config-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tezos-node
+  namespace: tqtezos1
+spec:
+  selector:
+    matchLabels:
+      app: tezos-node
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: tezos-node
+    spec:
+      containers:
+        - args:
+            - run
+            - --bootstrap-threshold
+            - "0"
+            - --config-file
+            - /etc/tezos/config.json
+          command:
+            - /usr/local/bin/tezos-node
+          image: tezos/tezos:v7.3
+          imagePullPolicy: Always
+          name: tezos-node
+          ports:
+            - containerPort: 8732
+              name: tezos-rpc
+            - containerPort: 9732
+              name: tezos-p2p
+          readinessProbe:
+            exec:
+              command:
+                - nc
+                - -z
+                - 127.0.0.1
+                - "8732"
+            initialDelaySeconds: 2
+            periodSeconds: 2
+            timeoutSeconds: 1
+          volumeMounts:
+            - mountPath: /etc/tezos
+              name: config-volume
+            - mountPath: /var/tezos
+              name: var-volume
+        - args:
+            - -A
+            - localhost
+            - -P
+            - "8732"
+            - -d
+            - /var/tezos/client
+            - run
+            - with
+            - local
+            - node
+            - /var/tezos/node
+            - baker
+          command:
+            - tezos-baker-006-PsCARTHA
+          image: tezos/tezos:v7.3
+          name: baker-job
+          volumeMounts:
+            - mountPath: /var/tezos
+              name: var-volume
+      initContainers:
+        - args:
+            - -c
+            - "[ -f /var/tezos/node/identity.json ] || (mkdir -p /var/tezos/node && /usr/local/bin/tezos-node
+              identity generate 0 --data-dir /var/tezos/node --config-file /etc/tezos/config.json)"
+          command:
+            - /bin/sh
+          image: tezos/tezos:v7.3
+          name: identity-job
+          volumeMounts:
+            - mountPath: /etc/tezos
+              name: config-volume
+            - mountPath: /var/tezos
+              name: var-volume
+        - args:
+            - -c
+            - mkdir -p /var/tezos/client /var/tezos/config-map; ls /var/tezos
+          command:
+            - /bin/sh
+          securityContext:
+            runAsUser: 100
+          image: busybox
+          name: tezos-client-dir-hack
+          volumeMounts:
+            - mountPath: /var/tezos
+              name: var-volume
+        - args:
+            - -c
+            - |
+              # Run cmds with --force to make re-running deployments faster by
+              # overwriting previously generated keys instead of needing to
+              # manually delete the keys. If keys exist, will error without --force.
+              /usr/local/bin/tezos-client -d /var/tezos/client --protocol PsCARTHAGazK gen keys baker --force
+              echo Created baker key
+              /usr/local/bin/tezos-client -d /var/tezos/client --protocol PsCARTHAGazK gen keys genesis --force
+              echo Created genesis key
+          command:
+            - /bin/sh
+          image: tezos/tezos:v7.3
+          name: generate-tezos-keys
+          volumeMounts:
+            - mountPath: /var/tezos
+              name: var-volume
+        - args:
+            - -c
+            - |
+              extract_public_key () {
+                grep -o 'Public Key: .\+' | sed 's/Public Key: //'
+              }
+
+              # Get genesis and baker keys
+              GENESIS_KEY=$(/usr/local/bin/tezos-client -d /var/tezos/client --protocol PsCARTHAGazK show address genesis | extract_public_key)
+              BAKER_KEY=$(/usr/local/bin/tezos-client -d /var/tezos/client --protocol PsCARTHAGazK show address baker | extract_public_key)
+
+              echo GENESIS_KEY: $GENESIS_KEY
+              echo BAKER_KEY: $BAKER_KEY
+
+              # Create copies of configMap's config.json and parameters.json
+              cp /etc/tezos/config.json /var/tezos/config-map/config.json
+              cp /etc/tezos/parameters.json /var/tezos/config-map/parameters.json
+
+              # Update the genesis key in config.json copy
+              sed -E -i "s/(\"genesis_pubkey\":\s*)\"(.*)\"/\1\"$GENESIS_KEY\"/" /var/tezos/config-map/config.json
+
+              # Set the bootstrap_accounts in parameters.json copy
+              BOOTSTRAP_MUTEZ=4000000000000
+              sed -E -i "s/(\"bootstrap_accounts\":\s*)\[\]/\1[[\"$GENESIS_KEY\", \"$BOOTSTRAP_MUTEZ\"],[\"$BAKER_KEY\", \"$BOOTSTRAP_MUTEZ\"]]/" /var/tezos/config-map/parameters.json
+          command:
+            - /bin/sh
+          image: tezos/tezos:v7.3
+          name: prepare-new-config-map
+          volumeMounts:
+            - mountPath: /var/tezos
+              name: var-volume
+            - mountPath: /etc/tezos
+              name: config-volume
+        - args:
+            - -c
+            - |
+              escape_quotes () {
+                sed 's/"/\\"/g'
+              }
+
+              CONFIG=$(cat /var/tezos/config-map/config.json | escape_quotes)
+              PARAMS=$(cat /var/tezos/config-map/parameters.json | escape_quotes)
+
+              echo Running: kubectl patch configmaps tezos-config -n tqtezos1 -p \
+              "{\"data\": {\"config.json\": \"$CONFIG\", \"params.json\": \"$PARAMS\"}}"
+
+              echo
+
+              kubectl patch configmaps tezos-config -n tqtezos1 -p \
+              "{\"data\": {\"config.json\": \"$CONFIG\", \"parameters.json\": \"$PARAMS\"}}"
+
+              echo && kubectl describe configmaps tezos-config -n tqtezos1
+          command:
+            - /bin/sh
+          image: bitnami/kubectl
+          name: update-config-map
+          volumeMounts:
+            - mountPath: /var/tezos
+              name: var-volume
+      volumes:
+        - configMap:
+            name: tezos-config
+          name: config-volume
+        - name: var-volume
+          persistentVolumeClaim:
+            claimName: tezos-pv-claim
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: activate-job
+  namespace: tqtezos1
+spec:
+  template:
+    metadata:
+      name: activate-job
+    spec:
+      containers:
+        - command:
+            - sh
+            - -c
+            - echo "private chain activated"
+          image: busybox
+          name: job-done
+      initContainers:
+        - command:
+            - sh
+            - -c
+            - |
+              TEZOS=$(kubectl get pod -n tqtezos1 -l app=tezos-node -o name)
+              echo Tezos pod: $TEZOS && echo
+              kubectl describe configmaps tezos-config -n tqtezos1 && echo
+              kubectl wait --for=condition=Ready $TEZOS --timeout=30s -n tqtezos1
+              echo && kubectl describe configmaps tezos-config -n tqtezos1
+          image: bitnami/kubectl
+          name: wait-for-node
+        - args:
+            - -A
+            - tezos-rpc
+            - -P
+            - "8732"
+            - -d
+            - /var/tezos/client
+            - -l
+            - --block
+            - genesis
+            - activate
+            - protocol
+            - PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb
+            - with
+            - fitness
+            - "-1"
+            - and
+            - key
+            - genesis
+            - and
+            - parameters
+            - /etc/tezos/parameters.json
+          command:
+            - /usr/local/bin/tezos-client
+          image: tezos/tezos:v7.3
+          name: activate
+          volumeMounts:
+            - mountPath: /etc/tezos
+              name: config-volume
+            - mountPath: /var/tezos
+              name: var-volume
+        - args:
+            - -A
+            - tezos-rpc
+            - -P
+            - "8732"
+            - -d
+            - /var/tezos/client
+            - -l
+            - bake
+            - for
+            - baker
+            - --minimal-timestamp
+          command:
+            - /usr/local/bin/tezos-client
+          image: tezos/tezos:v7.3
+          name: bake-once
+          volumeMounts:
+            - mountPath: /etc/tezos
+              name: config-volume
+            - mountPath: /var/tezos
+              name: var-volume
+      restartPolicy: Never
+      volumes:
+        - configMap:
+            name: tezos-config
+          name: config-volume
+        - name: var-volume
+          persistentVolumeClaim:
+            claimName: tezos-pv-claim
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tezos-peer
+  namespace: tqtezos1
+spec:
+  serviceName: tezos-p2p
+  replicas: 1
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: tezos-p2p
+  template:
+    metadata:
+      labels:
+        app: tezos-p2p
+    spec:
+      containers:
+        - args:
+            - run
+            - --config-file
+            - /etc/tezos/config.json
+          command:
+            - /usr/local/bin/tezos-node
+          image: tezos/tezos:v7.3
+          imagePullPolicy: Always
+          name: tezos-node
+          ports:
+            - containerPort: 8732
+              name: tezos-rpc
+            - containerPort: 9732
+              name: tezos-p2p
+          readinessProbe:
+            exec:
+              command:
+                - nc
+                - -z
+                - 127.0.0.1
+                - "8732"
+            initialDelaySeconds: 2
+            periodSeconds: 2
+            timeoutSeconds: 1
+          volumeMounts:
+            - mountPath: /etc/tezos
+              name: config-volume
+            - mountPath: /var/tezos
+              name: var-volume
+      initContainers:
+        - command:
+            - sh
+            - -c
+            - |
+              TEZOS=$(kubectl get pod -n tqtezos1 -l app=tezos-node -o name)
+              echo Tezos pod: $TEZOS && echo
+              kubectl describe configmaps tezos-config -n tqtezos1 && echo
+              kubectl wait --for=condition=Ready $TEZOS --timeout=30s -n tqtezos1
+              echo && kubectl describe configmaps tezos-config -n tqtezos1
+          image: bitnami/kubectl
+          name: wait-for-node
+        - args:
+            - -c
+            - "[ -f /var/tezos/node/identity.json ] || (mkdir -p /var/tezos/node && /usr/local/bin/tezos-node
+              identity generate 0 --data-dir /var/tezos/node --config-file /etc/tezos/config.json)"
+          command:
+            - /bin/sh
+          image: tezos/tezos:v7.3
+          name: identity-job
+          volumeMounts:
+            - mountPath: /etc/tezos
+              name: config-volume
+            - mountPath: /var/tezos
+              name: var-volume
+      volumes:
+        - configMap:
+            name: tezos-config
+          name: config-volume
+  volumeClaimTemplates:
+    - metadata:
+        name: var-volume
+        namespace: tqtezos1
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 15Gi
