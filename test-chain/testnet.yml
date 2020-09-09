@@ -119,7 +119,7 @@ spec:
             - /etc/tezos/config.json
           command:
             - /usr/local/bin/tezos-node
-          image: tezos/tezos:v7.3
+          image: tezos/tezos:v7-release
           imagePullPolicy: Always
           name: tezos-node
           ports:
@@ -157,7 +157,7 @@ spec:
             - baker
           command:
             - tezos-baker-006-PsCARTHA
-          image: tezos/tezos:v7.3
+          image: tezos/tezos:v7-release
           name: baker-job
           volumeMounts:
             - mountPath: /var/tezos
@@ -169,7 +169,7 @@ spec:
               identity generate 0 --data-dir /var/tezos/node --config-file /etc/tezos/config.json)"
           command:
             - /bin/sh
-          image: tezos/tezos:v7.3
+          image: tezos/tezos:v7-release
           name: identity-job
           volumeMounts:
             - mountPath: /etc/tezos
@@ -200,7 +200,7 @@ spec:
               echo Created genesis key
           command:
             - /bin/sh
-          image: tezos/tezos:v7.3
+          image: tezos/tezos:v7-release
           name: generate-tezos-keys
           volumeMounts:
             - mountPath: /var/tezos
@@ -231,7 +231,7 @@ spec:
               sed -E -i "s/(\"bootstrap_accounts\":\s*)\[\]/\1[[\"$GENESIS_KEY\", \"$BOOTSTRAP_MUTEZ\"],[\"$BAKER_KEY\", \"$BOOTSTRAP_MUTEZ\"]]/" /var/tezos/config-map/parameters.json
           command:
             - /bin/sh
-          image: tezos/tezos:v7.3
+          image: tezos/tezos:v7-release
           name: prepare-new-config-map
           volumeMounts:
             - mountPath: /var/tezos
@@ -325,7 +325,7 @@ spec:
             - /etc/tezos/parameters.json
           command:
             - /usr/local/bin/tezos-client
-          image: tezos/tezos:v7.3
+          image: tezos/tezos:v7-release
           name: activate
           volumeMounts:
             - mountPath: /etc/tezos
@@ -346,7 +346,7 @@ spec:
             - --minimal-timestamp
           command:
             - /usr/local/bin/tezos-client
-          image: tezos/tezos:v7.3
+          image: tezos/tezos:v7-release
           name: bake-once
           volumeMounts:
             - mountPath: /etc/tezos
@@ -365,7 +365,7 @@ spec:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: tezos-peer
+  name: tezos-p2p
   namespace: tqtezos1
 spec:
   serviceName: tezos-p2p
@@ -386,7 +386,7 @@ spec:
             - /etc/tezos/config.json
           command:
             - /usr/local/bin/tezos-node
-          image: tezos/tezos:v7.3
+          image: tezos/tezos:v7-release
           imagePullPolicy: Always
           name: tezos-node
           ports:
@@ -427,7 +427,7 @@ spec:
               identity generate 0 --data-dir /var/tezos/node --config-file /etc/tezos/config.json)"
           command:
             - /bin/sh
-          image: tezos/tezos:v7.3
+          image: tezos/tezos:v7-release
           name: identity-job
           volumeMounts:
             - mountPath: /etc/tezos
