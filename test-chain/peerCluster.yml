@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tqtezos1
+---
+apiVersion: v1
+data:
+  config.json:
+    '{"p2p": {"bootstrap-peers": ["YOUR_MACHINES_IP:9732", "tezos-p2p:9732"], "listen-addr": "[::]:9732", "expected-proof-of-work":
+    0}, "data-dir": "/var/tezos/node", "rpc": {"listen-addrs": [":8732"]}, "network":
+    {"chain_name": "my_chain", "sandboxed_chain_name": "SANDBOXED_TEZOS", "default_bootstrap_peers":
+    [], "genesis": {"timestamp": "2020-08-24T14:42:21.495599+00:00", "block": "BLtRfss9sZWvznNyzcPHzHq77S2G34u1zSomeqcu113szx44msS",
+    "protocol": "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex"}, "genesis_parameters":
+    {"values": {"genesis_pubkey": ""}}}}'
+kind: ConfigMap
+metadata:
+  name: tezos-config
+  namespace: tqtezos1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tezos-rpc
+  namespace: tqtezos1
+spec:
+  ports:
+    - port: 8732
+  selector:
+    app: tezos-p2p
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tezos-p2p
+  namespace: tqtezos1
+spec:
+  ports:
+    - port: 9732
+  selector:
+    app: tezos-p2p
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tezos-p2p
+  namespace: tqtezos1
+spec:
+  serviceName: tezos-p2p
+  replicas: 1
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: tezos-p2p
+  template:
+    metadata:
+      labels:
+        app: tezos-p2p
+    spec:
+      containers:
+        - args:
+            - run
+            - --config-file
+            - /etc/tezos/config.json
+          command:
+            - /usr/local/bin/tezos-node
+          image: tezos/tezos:v7-release
+          imagePullPolicy: Always
+          name: tezos-node
+          ports:
+            - containerPort: 8732
+              name: tezos-rpc
+            - containerPort: 9732
+              name: tezos-p2p
+          readinessProbe:
+            exec:
+              command:
+                - nc
+                - -z
+                - 127.0.0.1
+                - "8732"
+            initialDelaySeconds: 2
+            periodSeconds: 2
+            timeoutSeconds: 1
+          volumeMounts:
+            - mountPath: /etc/tezos
+              name: config-volume
+            - mountPath: /var/tezos
+              name: var-volume
+      initContainers:
+        - args:
+            - -c
+            - "[ -f /var/tezos/node/identity.json ] || (mkdir -p /var/tezos/node && /usr/local/bin/tezos-node
+              identity generate 0 --data-dir /var/tezos/node --config-file /etc/tezos/config.json)"
+          command:
+            - /bin/sh
+          image: tezos/tezos:v7-release
+          name: identity-job
+          volumeMounts:
+            - mountPath: /etc/tezos
+              name: config-volume
+            - mountPath: /var/tezos
+              name: var-volume
+      volumes:
+        - configMap:
+            name: tezos-config
+          name: config-volume
+  volumeClaimTemplates:
+    - metadata:
+        name: var-volume
+        namespace: tqtezos1
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 15Gi
